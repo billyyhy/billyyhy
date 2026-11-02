@@ -1,0 +1,15 @@
+[package]
+name = "spcx-daily"
+version = "0.1.0"
+edition = "2021"
+description = "Select the current SpaceX (SPCX) daily up/down Polymarket contract and roll it after each session."
+
+[dependencies]
+chrono = { version = "=0.4.38", default-features = false, features = ["clock", "std"] }
+serde_json = "=1.0.133"
+ureq = { version = "=2.10.1", default-features = false, features = ["tls"] }
+
+# Rust 1.83 cannot compile the 2025 idna/icu crates that newer ureq releases pull in.
+idna = "=0.5.0"
+url = "=2.5.2"
+zeroize = "=1.8.1"
