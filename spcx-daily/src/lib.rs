@@ -80,6 +80,32 @@ pub fn session_snapshot(now: DateTime<Utc>, markets: &[DailyMarket]) -> Value {
     })
 }
 
+pub fn new_york_daily_max() -> Result<(String, f64), String> {
+    let url = "https://api.open-meteo.com/v1/forecast?latitude=40.7128&longitude=-74.006&daily=temperature_2m_max&timezone=America%2FNew_York&forecast_days=1";
+    let response = ureq::get(url)
+        .set("Accept", "application/json")
+        .set("User-Agent", "spcx-daily/0.1")
+        .call()
+        .map_err(|err| format!("Open-Meteo request failed: {err}"))?;
+    let body = response
+        .into_string()
+        .map_err(|err| format!("Open-Meteo response was not text: {err}"))?;
+    let value: Value = serde_json::from_str(&body)
+        .map_err(|err| format!("Open-Meteo response was not JSON: {err}"))?;
+    parse_daily_max(&value).ok_or_else(|| "Open-Meteo did not include a daily maximum.".to_string())
+}
+
+pub fn parse_daily_max(value: &Value) -> Option<(String, f64)> {
+    let daily = value.get("daily")?;
+    let day = daily.get("time")?.as_array()?.first()?.as_str()?.to_string();
+    let temperature = daily
+        .get("temperature_2m_max")?
+        .as_array()?
+        .first()?
+        .as_f64()?;
+    Some((day, temperature))
+}
+
 pub fn fetch_open_markets() -> Result<Vec<DailyMarket>, String> {
     let url = format!(
         "{GAMMA_EVENTS}?series_slug={SERIES_SLUG}&closed=false&active=true&limit=20&order=endDate&ascending=true"
@@ -279,5 +305,14 @@ mod tests {
         assert!((markets[0].up - 0.52).abs() < 1e-9);
         assert!((markets[0].down - 0.48).abs() < 1e-9);
         assert!(markets[0].accepting_orders);
+    }
+
+    #[test]
+    fn reads_the_new_york_daily_maximum() {
+        let body = r#"{"daily":{"time":["2026-11-07"],"temperature_2m_max":[15.5]}}"#;
+        let value: Value = serde_json::from_str(body).unwrap();
+        let (day, temperature) = parse_daily_max(&value).unwrap();
+        assert_eq!(day, "2026-11-07");
+        assert!((temperature - 15.5).abs() < 1e-9);
     }
 }

@@ -3,14 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SpaceX daily</title>
+<title>HFT dashboard</title>
 <style>
   :root { color-scheme: dark; }
   body { margin: 0; font-family: Georgia, "Iowan Old Style", serif; background: #14120e; color: #f4efe4; }
   main { max-width: 720px; margin: 0 auto; padding: 48px 24px 64px; }
   p.kicker { letter-spacing: 0.14em; text-transform: uppercase; font-family: "Segoe UI", sans-serif; font-size: 12px; color: #b7a98a; margin: 0 0 8px; }
-  h1 { font-weight: 500; font-size: 34px; line-height: 1.2; margin: 0 0 28px; }
-  h1 a { color: #f0d48a; }
+  h1 { font-weight: 500; font-size: 34px; line-height: 1.2; margin: 0 0 8px; }
+  h2 { font-weight: 500; font-size: 22px; margin: 0 0 8px; }
+  h3 { font-weight: 500; font-size: 20px; line-height: 1.3; margin: 18px 0 16px; }
+  h3 a { color: #f0d48a; }
+  section { margin-top: 28px; padding-top: 22px; border-top: 1px solid #3a3226; }
+  .book { font-family: "Segoe UI", sans-serif; color: #d9d0c0; line-height: 1.5; margin: 0 0 8px; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; font-family: "Segoe UI", sans-serif; font-size: 14px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #3a3226; }
+  th { color: #b7a98a; font-weight: 600; }
   .prices { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .card { background: #221e18; border: 1px solid #3a3226; border-radius: 16px; padding: 20px 22px; }
   .card span { display: block; font-family: "Segoe UI", sans-serif; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #b7a98a; }
@@ -24,14 +31,43 @@
 </head>
 <body>
 <main>
-  <p class="kicker">SpaceX daily</p>
-  <h1 id="title">Loading the session…</h1>
-  <div class="prices">
-    <div class="card up"><span>Up</span><strong id="up">—</strong></div>
-    <div class="card down"><span>Down</span><strong id="down">—</strong></div>
-  </div>
-  <div class="meta" id="meta"></div>
-  <div class="warn" id="note"></div>
+  <p class="kicker">HFT dashboard</p>
+  <h1>Three books</h1>
+
+  <section>
+    <h2>Cointegration</h2>
+    <p class="book">equity 50.00 (start 50 + pnl 0.00) · 0W/0L · 0 open</p>
+    <p class="book">No pair is open, so this book does not send an order.</p>
+  </section>
+
+  <section>
+    <h2>Weather</h2>
+    <p class="book">equity 50.00 (start 50 + pnl 0.00) · 0W/0L · 32 open</p>
+    <p class="book" id="weather">__WEATHER__</p>
+  </section>
+
+  <section>
+    <h2>Options book</h2>
+    <p class="book">paper flat · session open · 0 open · pnl -344.00 · long premium off</p>
+    <p class="book">Long premium is off. A 5-year backtest lost money above a 60% hit rate. No Interactive Brokers orders. The live contract is the daily SpaceX market, and it rolls after each close.</p>
+    <h3 id="title">Loading the session…</h3>
+    <div class="prices">
+      <div class="card up"><span>Up</span><strong id="up">—</strong></div>
+      <div class="card down"><span>Down</span><strong id="down">—</strong></div>
+    </div>
+    <div class="meta" id="meta"></div>
+    <div class="warn" id="note"></div>
+    <table>
+      <thead>
+        <tr><th>contract</th><th>entry</th><th>status</th><th>pnl</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>NFLX call 66</td><td>17 @ 0.22</td><td>resolved</td><td>-34.00</td></tr>
+        <tr><td>NFLX call 67</td><td>22 @ 0.17</td><td>resolved</td><td>-121.00</td></tr>
+        <tr><td>NFLX call 68</td><td>18 @ 0.20</td><td>resolved</td><td>-189.00</td></tr>
+      </tbody>
+    </table>
+  </section>
 </main>
 <script>
 const SERIES = "https://gamma-api.polymarket.com/events?series_slug=spcx-daily-up-or-down&closed=false&active=true&limit=20&order=endDate&ascending=true";

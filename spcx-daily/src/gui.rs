@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use chrono::Utc;
 use serde_json::Value;
-use spcx_daily::{fetch_open_markets, session_snapshot};
+use spcx_daily::{fetch_open_markets, new_york_daily_max, session_snapshot};
 
 const PAGE: &str = include_str!("../index.html");
 
@@ -43,18 +43,28 @@ fn respond(mut stream: TcpStream) -> Result<(), String> {
         let body = snapshot.to_string();
         write_response(&mut stream, "application/json; charset=utf-8", body.as_bytes())
     } else {
-        let page = render_page(&snapshot);
+        let page = render_page(&snapshot, &weather_line());
         write_response(&mut stream, "text/html; charset=utf-8", page.as_bytes())
     }
 }
 
-fn render_page(snapshot: &Value) -> String {
+fn weather_line() -> String {
+    match new_york_daily_max() {
+        Ok((day, temperature)) => format!(
+            "New York daily max {temperature:.1} C on {day} (Open-Meteo). Weather book stays on the ledger until a market is priced."
+        ),
+        Err(_) => "Weather book stays on the ledger until a market is priced.".to_string(),
+    }
+}
+
+fn render_page(snapshot: &Value, weather: &str) -> String {
+    let page = PAGE.replacen("__WEATHER__", &escape(weather), 1);
     if snapshot["ok"].as_bool() != Some(true) {
         let note = escape(snapshot["note"].as_str().unwrap_or("No open SpaceX daily market."));
-        return PAGE
+        return page
             .replacen(
-                "<h1 id=\"title\">Loading the session…</h1>",
-                "<h1 id=\"title\">No session is open</h1>",
+                "<h3 id=\"title\">Loading the session…</h3>",
+                "<h3 id=\"title\">No session is open</h3>",
                 1,
             )
             .replacen(
@@ -68,11 +78,11 @@ fn render_page(snapshot: &Value) -> String {
     let url = snapshot["url"].as_str().unwrap_or("");
     let heading = if url.starts_with("https://polymarket.com/event/") {
         format!(
-            "<h1 id=\"title\"><a href=\"{}\">{title}</a></h1>",
+            "<h3 id=\"title\"><a href=\"{}\">{title}</a></h3>",
             escape(url)
         )
     } else {
-        format!("<h1 id=\"title\">{title}</h1>")
+        format!("<h3 id=\"title\">{title}</h3>")
     };
     let up = format_price(snapshot["up"].as_f64());
     let down = format_price(snapshot["down"].as_f64());
@@ -94,7 +104,7 @@ fn render_page(snapshot: &Value) -> String {
     let meta = format!(
         "This contract closes {close} Hong Kong time. After that, this page selects the next day.<br>{next}"
     );
-    PAGE.replacen("<h1 id=\"title\">Loading the session…</h1>", &heading, 1)
+    page.replacen("<h3 id=\"title\">Loading the session…</h3>", &heading, 1)
         .replacen("<strong id=\"up\">—</strong>", &format!("<strong id=\"up\">{up}</strong>"), 1)
         .replacen(
             "<strong id=\"down\">—</strong>",
