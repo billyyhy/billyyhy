@@ -144,21 +144,81 @@ function showSession(session, next) {
   document.getElementById("note").textContent = "No order was sent.";
 }
 
+function showSnapshot(data) {
+  const title = document.getElementById("title");
+  clearNode(title);
+  if (typeof data.url === "string" && data.url.indexOf("https://polymarket.com/event/") === 0) {
+    const link = document.createElement("a");
+    link.href = data.url;
+    link.textContent = data.title;
+    title.appendChild(link);
+  } else {
+    title.textContent = data.title;
+  }
+  document.getElementById("up").textContent = Number(data.up).toFixed(3);
+  document.getElementById("down").textContent = Number(data.down).toFixed(3);
+  const meta = document.getElementById("meta");
+  clearNode(meta);
+  meta.appendChild(document.createTextNode(
+    "This contract closes " + data.closesHongKong + " Hong Kong time. After that, this page selects the next day."
+  ));
+  meta.appendChild(document.createElement("br"));
+  if (typeof data.nextUrl === "string" && data.nextUrl.indexOf("https://polymarket.com/event/") === 0 && data.nextTitle) {
+    meta.appendChild(document.createTextNode("Next session: "));
+    const nextLink = document.createElement("a");
+    nextLink.href = data.nextUrl;
+    nextLink.textContent = data.nextTitle;
+    meta.appendChild(nextLink);
+    meta.appendChild(document.createTextNode("."));
+  } else {
+    meta.appendChild(document.createTextNode("Next session is not listed yet."));
+  }
+  document.getElementById("note").textContent = data.note || "No order was sent.";
+}
+
+function stillLoading() {
+  return document.getElementById("title").textContent.indexOf("Loading") === 0;
+}
+
 async function refresh() {
+  const controller = new AbortController();
+  const timer = setTimeout(function () { controller.abort(); }, 8000);
   try {
-    const response = await fetch(SERIES);
+    const local = await fetch("/api/session", { signal: controller.signal });
+    if (local.ok) {
+      const data = await local.json();
+      if (data && data.ok && data.title) {
+        showSnapshot(data);
+        return;
+      }
+      if (data && data.ok === false && data.note && stillLoading()) {
+        showEmpty(data.note);
+        return;
+      }
+    }
+  } catch (err) {
+    // The published page has no local API. Fall through to Polymarket.
+  }
+  try {
+    const response = await fetch(SERIES, { signal: controller.signal });
     if (!response.ok) throw new Error("Polymarket returned " + response.status);
     const events = await response.json();
     if (!Array.isArray(events)) throw new Error("Polymarket did not return a session list.");
     const markets = events.map(parseEvent).filter(Boolean);
     const session = selectSession(new Date(), markets);
     if (!session) {
-      showEmpty("No open SpaceX daily market. Polymarket lists the next weekday session when it is published. Weekends have no contract.");
+      if (stillLoading()) {
+        showEmpty("No open SpaceX daily market. Polymarket lists the next weekday session when it is published. Weekends have no contract.");
+      }
       return;
     }
     showSession(session, followingSession(session, markets));
   } catch (err) {
-    showEmpty(err && err.message ? err.message : "The session could not be loaded.");
+    if (stillLoading()) {
+      showEmpty(err && err.message ? err.message : "The session could not be loaded.");
+    }
+  } finally {
+    clearTimeout(timer);
   }
 }
 
