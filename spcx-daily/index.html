@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpaceX daily</title>
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; font-family: Georgia, "Iowan Old Style", serif; background: #14120e; color: #f4efe4; }
+  main { max-width: 720px; margin: 0 auto; padding: 48px 24px 64px; }
+  p.kicker { letter-spacing: 0.14em; text-transform: uppercase; font-family: "Segoe UI", sans-serif; font-size: 12px; color: #b7a98a; margin: 0 0 8px; }
+  h1 { font-weight: 500; font-size: 34px; line-height: 1.2; margin: 0 0 28px; }
+  h1 a { color: #f0d48a; }
+  .prices { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .card { background: #221e18; border: 1px solid #3a3226; border-radius: 16px; padding: 20px 22px; }
+  .card span { display: block; font-family: "Segoe UI", sans-serif; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #b7a98a; }
+  .card strong { display: block; margin-top: 8px; font-size: 48px; font-weight: 500; }
+  .up strong { color: #d7e7c8; }
+  .down strong { color: #f0c7b0; }
+  .meta { margin-top: 28px; font-family: "Segoe UI", sans-serif; line-height: 1.55; color: #d9d0c0; }
+  .meta a { color: #f0d48a; }
+  .warn { margin-top: 22px; padding: 12px 14px; border-radius: 10px; background: #2a2418; color: #f0d48a; font-family: "Segoe UI", sans-serif; }
+</style>
+</head>
+<body>
+<main>
+  <p class="kicker">SpaceX daily</p>
+  <h1 id="title">Loading the session…</h1>
+  <div class="prices">
+    <div class="card up"><span>Up</span><strong id="up">—</strong></div>
+    <div class="card down"><span>Down</span><strong id="down">—</strong></div>
+  </div>
+  <div class="meta" id="meta"></div>
+  <div class="warn" id="note"></div>
+</main>
+<script>
+const SERIES = "https://gamma-api.polymarket.com/events?series_slug=spcx-daily-up-or-down&closed=false&active=true&limit=20&order=endDate&ascending=true";
+
+function asList(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try { return JSON.parse(value); } catch (err) { return []; }
+  }
+  return [];
+}
+
+function eventUrl(slug) {
+  if (typeof slug !== "string" || !/^[a-z0-9-]+$/.test(slug)) return null;
+  return "https://polymarket.com/event/" + slug;
+}
+
+function parseEvent(event) {
+  const market = (event.markets || [])[0];
+  if (!market || !event.endDate) return null;
+  const outcomes = asList(market.outcomes);
+  const prices = asList(market.outcomePrices);
+  let up = null;
+  let down = null;
+  outcomes.forEach(function (name, index) {
+    const label = String(name).toLowerCase();
+    const price = Number(prices[index]);
+    if (!Number.isFinite(price)) return;
+    if (label === "up") up = price;
+    if (label === "down") down = price;
+  });
+  const url = eventUrl(event.slug);
+  if (up === null || down === null || !url) return null;
+  return {
+    title: String(event.title || event.slug),
+    url: url,
+    end: new Date(event.endDate),
+    up: up,
+    down: down,
+    accepting: Boolean(market.acceptingOrders),
+    closed: Boolean(event.closed)
+  };
+}
+
+function selectSession(now, markets) {
+  const open = markets.filter(function (market) {
+    return market.accepting && !market.closed && market.end > now;
+  });
+  open.sort(function (a, b) { return a.end - b.end; });
+  return open[0] || null;
+}
+
+function followingSession(current, markets) {
+  const later = markets.filter(function (market) {
+    return !market.closed && market.end > current.end;
+  });
+  later.sort(function (a, b) { return a.end - b.end; });
+  return later[0] || null;
+}
+
+function hongKongClose(date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Hong_Kong",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).format(date).replace(",", "");
+}
+
+function clearNode(node) {
+  while (node.firstChild) node.removeChild(node.firstChild);
+}
+
+function showEmpty(message) {
+  document.getElementById("title").textContent = "No session is open";
+  document.getElementById("up").textContent = "—";
+  document.getElementById("down").textContent = "—";
+  clearNode(document.getElementById("meta"));
+  document.getElementById("note").textContent = message;
+}
+
+function showSession(session, next) {
+  const title = document.getElementById("title");
+  clearNode(title);
+  const link = document.createElement("a");
+  link.href = session.url;
+  link.textContent = session.title;
+  title.appendChild(link);
+  document.getElementById("up").textContent = session.up.toFixed(3);
+  document.getElementById("down").textContent = session.down.toFixed(3);
+  const meta = document.getElementById("meta");
+  clearNode(meta);
+  meta.appendChild(document.createTextNode(
+    "This contract closes " + hongKongClose(session.end) + " Hong Kong time. After that, this page selects the next day."
+  ));
+  meta.appendChild(document.createElement("br"));
+  if (next) {
+    meta.appendChild(document.createTextNode("Next session: "));
+    const nextLink = document.createElement("a");
+    nextLink.href = next.url;
+    nextLink.textContent = next.title;
+    meta.appendChild(nextLink);
+    meta.appendChild(document.createTextNode("."));
+  } else {
+    meta.appendChild(document.createTextNode("Next session is not listed yet."));
+  }
+  document.getElementById("note").textContent = "No order was sent.";
+}
+
+async function refresh() {
+  try {
+    const response = await fetch(SERIES);
+    if (!response.ok) throw new Error("Polymarket returned " + response.status);
+    const events = await response.json();
+    if (!Array.isArray(events)) throw new Error("Polymarket did not return a session list.");
+    const markets = events.map(parseEvent).filter(Boolean);
+    const session = selectSession(new Date(), markets);
+    if (!session) {
+      showEmpty("No open SpaceX daily market. Polymarket lists the next weekday session when it is published. Weekends have no contract.");
+      return;
+    }
+    showSession(session, followingSession(session, markets));
+  } catch (err) {
+    showEmpty(err && err.message ? err.message : "The session could not be loaded.");
+  }
+}
+
+refresh();
+setInterval(refresh, 30000);
+</script>
+</body>
+</html>
