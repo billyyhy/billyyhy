@@ -3,8 +3,10 @@
 //! The next session is a different event. This crate picks the open contract
 //! whose close is soonest, so the same command follows the series every day.
 
-use chrono::{DateTime, Utc};
-use serde_json::Value;
+use chrono::{DateTime, FixedOffset, Utc};
+use serde_json::{json, Value};
+
+const HONG_KONG_OFFSET_SECONDS: i32 = 8 * 3600;
 
 pub const SERIES_SLUG: &str = "spcx-daily-up-or-down";
 pub const GAMMA_EVENTS: &str = "https://gamma-api.polymarket.com/events";
@@ -43,6 +45,39 @@ pub fn following_session(current: &DailyMarket, markets: &[DailyMarket]) -> Opti
         .filter(|market| !market.closed && market.end > current.end)
         .min_by_key(|market| market.end)
         .cloned()
+}
+
+pub fn hong_kong_offset() -> FixedOffset {
+    FixedOffset::east_opt(HONG_KONG_OFFSET_SECONDS).expect("UTC+8")
+}
+
+/// Status payload for the command line and the local page.
+pub fn session_snapshot(now: DateTime<Utc>, markets: &[DailyMarket]) -> Value {
+    let Some(session) = select_session(now, markets) else {
+        return json!({
+            "ok": false,
+            "note": "No open SpaceX daily market. Polymarket lists the next weekday session when it is published. Weekends have no contract.",
+            "orderSent": false
+        });
+    };
+    let close_hk = session
+        .end
+        .with_timezone(&hong_kong_offset())
+        .format("%Y-%m-%d %H:%M")
+        .to_string();
+    let next = following_session(&session, markets);
+    json!({
+        "ok": true,
+        "title": session.title,
+        "url": session.url(),
+        "up": session.up,
+        "down": session.down,
+        "closesHongKong": close_hk,
+        "nextTitle": next.as_ref().map(|market| market.title.clone()),
+        "nextUrl": next.as_ref().map(|market| market.url()),
+        "note": "No order was sent.",
+        "orderSent": false
+    })
 }
 
 pub fn fetch_open_markets() -> Result<Vec<DailyMarket>, String> {
@@ -177,6 +212,14 @@ mod tests {
             following_session(&selected, &markets).unwrap().slug,
             "spcx-up-or-down-on-november-3-2026"
         );
+        let snapshot = session_snapshot(now, &markets);
+        assert_eq!(snapshot["ok"], true);
+        assert_eq!(snapshot["closesHongKong"], "2026-11-03 05:00");
+        assert_eq!(snapshot["orderSent"], false);
+        assert!(snapshot["nextUrl"]
+            .as_str()
+            .unwrap()
+            .contains("november-3-2026"));
     }
 
     #[test]

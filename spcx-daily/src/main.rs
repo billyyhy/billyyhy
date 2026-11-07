@@ -1,7 +1,22 @@
-use chrono::{FixedOffset, Utc};
-use spcx_daily::{fetch_open_markets, following_session, select_session};
+mod gui;
+
+use chrono::Utc;
+use spcx_daily::{fetch_open_markets, session_snapshot};
 
 fn main() {
+    if std::env::args().any(|arg| arg == "--gui") {
+        let port = std::env::args()
+            .position(|arg| arg == "--port")
+            .and_then(|index| std::env::args().nth(index + 1))
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(8734);
+        if let Err(err) = gui::serve(port) {
+            eprintln!("{err}");
+            std::process::exit(1);
+        }
+        return;
+    }
+
     let now = Utc::now();
     let markets = match fetch_open_markets() {
         Ok(markets) => markets,
@@ -10,24 +25,26 @@ fn main() {
             std::process::exit(1);
         }
     };
-    let Some(session) = select_session(now, &markets) else {
-        println!("No open SpaceX daily market.");
-        println!("Polymarket lists the next weekday session when it is published. Weekends have no contract.");
-        std::process::exit(0);
-    };
+    let snapshot = session_snapshot(now, &markets);
+    if snapshot["ok"].as_bool() != Some(true) {
+        println!("{}", snapshot["note"].as_str().unwrap_or("No open SpaceX daily market."));
+        return;
+    }
 
-    let hong_kong = FixedOffset::east_opt(8 * 3600).expect("UTC+8");
-    let close_hk = session.end.with_timezone(&hong_kong);
-    println!("{}", session.title);
-    println!("{}", session.url());
-    println!("Up {:.3}    Down {:.3}", session.up, session.down);
+    let close_hk = snapshot["closesHongKong"].as_str().unwrap_or("");
+    println!("{}", snapshot["title"].as_str().unwrap_or(""));
+    println!("{}", snapshot["url"].as_str().unwrap_or(""));
     println!(
-        "This contract closes {} Hong Kong time. After that, run this again and it selects the next day.",
-        close_hk.format("%Y-%m-%d %H:%M")
+        "Up {:.3}    Down {:.3}",
+        snapshot["up"].as_f64().unwrap_or(0.0),
+        snapshot["down"].as_f64().unwrap_or(0.0)
     );
-    match following_session(&session, &markets) {
-        Some(next) => println!("Next session: {}", next.url()),
+    println!(
+        "This contract closes {close_hk} Hong Kong time. After that, run this again and it selects the next day."
+    );
+    match snapshot["nextUrl"].as_str() {
+        Some(next) => println!("Next session: {next}"),
         None => println!("Next session is not listed yet."),
     }
-    println!("No order was sent.");
+    println!("{}", snapshot["note"].as_str().unwrap_or("No order was sent."));
 }
