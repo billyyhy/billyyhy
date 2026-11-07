@@ -1,7 +1,6 @@
 mod gui;
 
-use chrono::Utc;
-use spcx_daily::{fetch_open_markets, session_snapshot};
+use spcx_daily::new_york_daily_max;
 
 fn main() {
     if std::env::args().any(|arg| arg == "--gui") {
@@ -17,34 +16,17 @@ fn main() {
         return;
     }
 
-    let now = Utc::now();
-    let markets = match fetch_open_markets() {
-        Ok(markets) => markets,
-        Err(err) => {
-            eprintln!("{err}");
-            std::process::exit(1);
-        }
-    };
-    let snapshot = session_snapshot(now, &markets);
-    if snapshot["ok"].as_bool() != Some(true) {
-        println!("{}", snapshot["note"].as_str().unwrap_or("No open SpaceX daily market."));
-        return;
+    println!("HFT dashboard");
+    println!("Cointegration  equity 50.00 (start 50 + pnl 0.00) · 0W/0L · 0 open");
+    println!("Weather        equity 50.00 (start 50 + pnl 0.00) · 0W/0L · 32 open");
+    match new_york_daily_max() {
+        Ok((day, temperature)) => println!(
+            "New York daily max {temperature:.1} C on {day} (Open-Meteo). Weather book stays on the ledger until a market is priced."
+        ),
+        Err(err) => eprintln!("{err}"),
     }
-
-    let close_hk = snapshot["closesHongKong"].as_str().unwrap_or("");
-    println!("{}", snapshot["title"].as_str().unwrap_or(""));
-    println!("{}", snapshot["url"].as_str().unwrap_or(""));
-    println!(
-        "Up {:.3}    Down {:.3}",
-        snapshot["up"].as_f64().unwrap_or(0.0),
-        snapshot["down"].as_f64().unwrap_or(0.0)
-    );
-    println!(
-        "This contract closes {close_hk} Hong Kong time. After that, run this again and it selects the next day."
-    );
-    match snapshot["nextUrl"].as_str() {
-        Some(next) => println!("Next session: {next}"),
-        None => println!("Next session is not listed yet."),
-    }
-    println!("{}", snapshot["note"].as_str().unwrap_or("No order was sent."));
+    println!("Options book   paper flat · session open · 0 open · pnl -344.00 · long premium off");
+    println!("NFLX call 66   17 @ 0.22   resolved   -34.00");
+    println!("NFLX call 67   22 @ 0.17   resolved   -121.00");
+    println!("NFLX call 68   18 @ 0.20   resolved   -189.00");
 }

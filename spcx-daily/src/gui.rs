@@ -2,16 +2,14 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
 
-use chrono::Utc;
-use serde_json::Value;
-use spcx_daily::{fetch_open_markets, new_york_daily_max, session_snapshot};
+use spcx_daily::new_york_daily_max;
 
 const PAGE: &str = include_str!("../index.html");
 
 pub fn serve(port: u16) -> Result<(), String> {
     let listener = TcpListener::bind(("127.0.0.1", port))
         .map_err(|err| format!("Could not open the page on port {port}: {err}"))?;
-    println!("SpaceX daily page: http://127.0.0.1:{port}");
+    println!("HFT dashboard: http://127.0.0.1:{port}");
     for connection in listener.incoming() {
         match connection {
             Ok(stream) => {
@@ -28,24 +26,9 @@ fn respond(mut stream: TcpStream) -> Result<(), String> {
         .set_read_timeout(Some(Duration::from_secs(5)))
         .map_err(|err| err.to_string())?;
     let mut buffer = [0_u8; 1024];
-    let read = stream.read(&mut buffer).unwrap_or(0);
-    let request = String::from_utf8_lossy(&buffer[..read]);
-    let path = request.split_whitespace().nth(1).unwrap_or("/");
-    let snapshot = match fetch_open_markets() {
-        Ok(markets) => session_snapshot(Utc::now(), &markets),
-        Err(err) => serde_json::json!({
-            "ok": false,
-            "note": err,
-            "orderSent": false
-        }),
-    };
-    if path.starts_with("/api/session") {
-        let body = snapshot.to_string();
-        write_response(&mut stream, "application/json; charset=utf-8", body.as_bytes())
-    } else {
-        let page = render_page(&snapshot, &weather_line());
-        write_response(&mut stream, "text/html; charset=utf-8", page.as_bytes())
-    }
+    let _ = stream.read(&mut buffer);
+    let page = PAGE.replacen("__WEATHER__", &escape(&weather_line()), 1);
+    write_response(&mut stream, "text/html; charset=utf-8", page.as_bytes())
 }
 
 fn weather_line() -> String {
@@ -54,79 +37,6 @@ fn weather_line() -> String {
             "New York daily max {temperature:.1} C on {day} (Open-Meteo). Weather book stays on the ledger until a market is priced."
         ),
         Err(_) => "Weather book stays on the ledger until a market is priced.".to_string(),
-    }
-}
-
-fn render_page(snapshot: &Value, weather: &str) -> String {
-    let page = PAGE.replacen("__WEATHER__", &escape(weather), 1);
-    if snapshot["ok"].as_bool() != Some(true) {
-        let note = escape(snapshot["note"].as_str().unwrap_or("No open SpaceX daily market."));
-        return page
-            .replacen(
-                "<h3 id=\"title\">Loading the session…</h3>",
-                "<h3 id=\"title\">No session is open</h3>",
-                1,
-            )
-            .replacen(
-                "<div class=\"warn\" id=\"note\"></div>",
-                &format!("<div class=\"warn\" id=\"note\">{note}</div>"),
-                1,
-            );
-    }
-
-    let title = escape(snapshot["title"].as_str().unwrap_or("SpaceX daily"));
-    let url = snapshot["url"].as_str().unwrap_or("");
-    let heading = if url.starts_with("https://polymarket.com/event/") {
-        format!(
-            "<h3 id=\"title\"><a href=\"{}\">{title}</a></h3>",
-            escape(url)
-        )
-    } else {
-        format!("<h3 id=\"title\">{title}</h3>")
-    };
-    let up = format_price(snapshot["up"].as_f64());
-    let down = format_price(snapshot["down"].as_f64());
-    let close = escape(snapshot["closesHongKong"].as_str().unwrap_or(""));
-    let note = escape(snapshot["note"].as_str().unwrap_or("No order was sent."));
-    let next = match (
-        snapshot["nextUrl"].as_str(),
-        snapshot["nextTitle"].as_str(),
-    ) {
-        (Some(next_url), Some(next_title)) if next_url.starts_with("https://polymarket.com/event/") => {
-            format!(
-                "Next session: <a href=\"{}\">{}</a>.",
-                escape(next_url),
-                escape(next_title)
-            )
-        }
-        _ => "Next session is not listed yet.".to_string(),
-    };
-    let meta = format!(
-        "This contract closes {close} Hong Kong time. After that, this page selects the next day.<br>{next}"
-    );
-    page.replacen("<h3 id=\"title\">Loading the session…</h3>", &heading, 1)
-        .replacen("<strong id=\"up\">—</strong>", &format!("<strong id=\"up\">{up}</strong>"), 1)
-        .replacen(
-            "<strong id=\"down\">—</strong>",
-            &format!("<strong id=\"down\">{down}</strong>"),
-            1,
-        )
-        .replacen(
-            "<div class=\"meta\" id=\"meta\"></div>",
-            &format!("<div class=\"meta\" id=\"meta\">{meta}</div>"),
-            1,
-        )
-        .replacen(
-            "<div class=\"warn\" id=\"note\"></div>",
-            &format!("<div class=\"warn\" id=\"note\">{note}</div>"),
-            1,
-        )
-}
-
-fn format_price(price: Option<f64>) -> String {
-    match price {
-        Some(value) => format!("{value:.3}"),
-        None => "—".to_string(),
     }
 }
 
